@@ -114,25 +114,27 @@ func updatetodo(w http.ResponseWriter, r *http.Request) {
 }
 func main() {
 	http.HandleFunc("/todos", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
+		switch r.Method {
+		case "GET":
 			listalltodos(w, r)
-		} else if r.Method == "POST" {
+		case "POST":
 			createtodo(w, r)
-		} else {
+		default:
 			http.Error(w, "Method is not allwed", http.StatusMethodNotAllowed)
 		}
 	})
 	http.HandleFunc("/todos/", func(w http.ResponseWriter, r *http.Request) {
 		//id , _ := strconv.Atoi(URL.Path[len("/todos/"):1])
-		if r.Method == "GET" {
+		switch r.Method {
+		case "GET":
 			listtodo(w, r)
-		} else if r.Method == "POST" {
+		case "POST":
 			createtodo(w, r)
-		} else if r.Method == "PUT" {
+		case "PUT":
 			updatetodo(w, r)
-		} else if r.Method == "DELETE" {
+		case "DELETE":
 			deltodo(w, r)
-		} else {
+		default:
 			http.Error(w, "Method is not allwed", http.StatusMethodNotAllowed)
 		}
 	})
