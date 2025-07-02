@@ -18,7 +18,7 @@ func Connect() error { //connection function returns errror
 		return fmt.Errorf("error opening database %s", err)
 	}
 	if err := DB.Ping(); err != nil {
-		return fmt.Errorf("enable to connect to database %s", err)
+		return fmt.Errorf("unnable to connect to database %s", err)
 	}
 	//no error
 	return nil

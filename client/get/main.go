@@ -9,10 +9,10 @@ import (
 )
 
 type Todo struct {
-	UserID    int    `json:"userId"`
-	ID        int    `json:"id"`
-	Title     string `json:"title"`
-	Completed bool   `json:"completed"`
+	Id      int    `json:"id"`
+	Title   string `json:"title"`
+	Status  bool   `json:"status"`
+	Deleted bool   `json:"deleted"`
 }
 
 // This program fetches a TODO item from a public API and prints it to the console.
