@@ -8,20 +8,20 @@ import (
 )
 
 type Todo struct {
-	Id      int    `json:"userId"`
-	Status  bool   `json:"status"`
+	Id      int    `json:"id"`
 	Title   string `json:"title"`
+	Status  bool   `json:"status"`
 	Deleted bool   `json:"deleted"`
 }
 
 func main() {
 
-	var todo Todo = Todo{Id: 1, Title: "Hello World 2", Status: false, Deleted: false}
+	var todo Todo = Todo{Id: 1, Title: "Pushed via a script into DB haha", Status: false, Deleted: false}
 	dat, err := json.Marshal(todo)
 	if err != nil {
 		fmt.Println("Error Marshalling")
 	} else {
-		res, err := http.Post("http://localhost:8080/todos/", "application/json; charset=utf-8", bytes.NewBuffer(dat))
+		res, err := http.Post("http://localhost:8080/todos", "application/json; charset=utf-8", bytes.NewBuffer(dat))
 		if err != nil {
 			fmt.Println("Error making request", err)
 		} else {

@@ -16,7 +16,7 @@ type Todo struct {
 }
 
 func main() {
-	var todo Todo = Todo{Id: 1, Title: "Modified", Status: false, Deleted: false}
+	var todo Todo = Todo{Id: 1, Title: "Chnaged", Status: false, Deleted: false}
 	dat, err := json.Marshal(todo)
 	if err != nil {
 		fmt.Println("Error Marshalling")
