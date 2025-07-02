@@ -8,15 +8,15 @@ import (
 )
 
 type Todo struct {
-	Id      int    `json:"userId"`
-	Status  bool   `json:"status"`
+	Id      string `json:"id"` //changed to string for uuid support
 	Title   string `json:"title"`
+	Status  bool   `json:"status"`
 	Deleted bool   `json:"deleted"`
 }
 
 func main() {
 
-	var todo Todo = Todo{Id: 1, Title: "Hello World 2", Status: false, Deleted: false}
+	var todo Todo = Todo{Id: "ast", Title: "Hello World 2", Status: false, Deleted: false}
 	dat, err := json.Marshal(todo)
 	if err != nil {
 		fmt.Println("Error Marshalling")

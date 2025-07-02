@@ -7,7 +7,10 @@ import (
 
 // testing delete
 func main() {
-	req, err := http.NewRequest(http.MethodDelete, "http://localhost:8080/todos/1", nil)
+	var id string
+	fmt.Scan(&id)
+	url := "http://localhost:8080/todos/" + id
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	req.Header.Set("Content-type", "application/json")
 	if err != nil {
 		return

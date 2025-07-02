@@ -4,25 +4,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
+	"sync"
+
+	"github.com/google/uuid"
 )
 
 // This creates a server to explicitly handle todo requests
 type Todo struct {
-	Id      int    `json:"id"`
+	Id      string `json:"id"` //changed to string for uuid support
 	Title   string `json:"title"`
 	Status  bool   `json:"status"`
 	Deleted bool   `json:"deleted"`
 }
 
 // make a map of todo pointers to handle creates in memory
-var todos = make(map[int]*Todo)
+var todos = make(map[string]*Todo)
 
 // declare a global variable for unique ids
-var id = 1
+//var id = 1 --> moved to UUIDs
+
+// mutex for concurrency
+var mutex = sync.RWMutex{}
 
 // function to list all todos
 func listalltodos(w http.ResponseWriter, r *http.Request) {
+	mutex.RLock()         //read lock
+	defer mutex.RUnlock() //unlock
 	var td []*Todo
 	for _, val := range todos {
 		if !val.Deleted {
@@ -39,6 +46,8 @@ func listalltodos(w http.ResponseWriter, r *http.Request) {
 
 // function to create a todo
 func createtodo(w http.ResponseWriter, r *http.Request) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	//get the data from request
 	var t Todo
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
@@ -46,8 +55,8 @@ func createtodo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON data", http.StatusBadRequest)
 		return
 	}
-	t.Id = id //assigned a unique id different from the request id
-	id++
+	t.Id = uuid.New().String() //assigned a unique id different from the request id
+
 	todos[t.Id] = &t //store to a map
 	//send a created respose
 	w.WriteHeader(http.StatusCreated)
@@ -58,13 +67,10 @@ func createtodo(w http.ResponseWriter, r *http.Request) {
 // this function return a specific todo by id
 func listtodo(w http.ResponseWriter, r *http.Request) {
 	// get the id
-	strpath := r.URL.Path[len("/todos/"):] //returns string after the path
-	id, err := strconv.Atoi(strpath)
-	if err != nil {
-		http.Error(w, "Inavalid todo ID", http.StatusNotFound)
-		return
-	}
-	t, ok := todos[id] //return a bool if val at id exists
+	mutex.RLock()
+	defer mutex.RUnlock()
+	id := r.URL.Path[len("/todos/"):] //returns string after the path
+	t, ok := todos[id]                //return a bool if val at id exists
 	if !ok || t.Deleted {
 		http.Error(w, "Item doesn't exist or may have been deleted", http.StatusNotFound)
 		return
@@ -73,17 +79,10 @@ func listtodo(w http.ResponseWriter, r *http.Request) {
 }
 func deltodo(w http.ResponseWriter, r *http.Request) {
 	// get the id
-	strpath := r.URL.Path[len("/todos/"):] //returns string after the path
-	id, err := strconv.Atoi(strpath)
-	if err != nil {
-		http.Error(w, "Inavalid todo ID", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		http.Error(w, "Inavalid todo ID", http.StatusNotFound)
-		return
-	}
-	t, ok := todos[id] //return a bool if val at id exists
+	mutex.Lock()
+	defer mutex.Unlock()
+	id := r.URL.Path[len("/todos/"):] //returns string after the path
+	t, ok := todos[id]                //return a bool if val at id exists
 	if !ok || t.Deleted {
 		http.Error(w, "Item doesn't exist or may have been deleted", http.StatusNotFound)
 		return
@@ -92,19 +91,17 @@ func deltodo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent) //deleted
 }
 func updatetodo(w http.ResponseWriter, r *http.Request) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	// get the id
-	strpath := r.URL.Path[len("/todos/"):] //returns string after the path
-	id, err := strconv.Atoi(strpath)
-	if err != nil {
-		http.Error(w, "Inavalid todo ID", http.StatusNotFound)
-		return
-	}
-	t, ok := todos[id] //return a bool if val at id exists
+	id := r.URL.Path[len("/todos/"):] //returns string after the path
+	t, ok := todos[id]                //return a bool if val at id exists
 	if !ok || t.Deleted {
 		http.Error(w, "Item doesn't exist or may have been deleted", http.StatusNotFound)
 		return
 	}
-	err = json.NewDecoder(r.Body).Decode(todos[id])
+	err := json.NewDecoder(r.Body).Decode(todos[id])
+	todos[id].Id = id
 	if err != nil {
 		http.Error(w, "Invalid JSON data", http.StatusBadRequest)
 	}
