@@ -22,7 +22,7 @@ func main() {
 		fmt.Println("Error Marshalling")
 		return
 	}
-	req, err := http.NewRequest(http.MethodPut, "http://localhost:8080/todos/a34ff89b-95f8-4f7d-82b6-470f892d1a21", bytes.NewBuffer(dat))
+	req, err := http.NewRequest(http.MethodPut, "http://localhost:8080/todos/20", bytes.NewBuffer(dat))
 	if err != nil {
 		fmt.Println("Request creation failed")
 		return
