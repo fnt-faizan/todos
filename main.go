@@ -8,192 +8,156 @@ import (
 	"strconv"
 	"time"
 	"todos/db"
+	"todos/models"
 
 	"github.com/gorilla/mux"
 )
-
-type Todo struct {
-	Id      int    `json:"id"`
-	Title   string `json:"title"`
-	Status  bool   `json:"status"`
-	Deleted bool   `json:"deleted"`
-}
 
 const (
 	cacheListKey = "todos:all"
 	itemKeyFmt   = "todo:%d"
 )
 
+// helper functions for JSON responses
+func jsonResponse(w http.ResponseWriter, data interface{}, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+func errorResponse(w http.ResponseWriter, msg string, status int) {
+	jsonResponse(w, map[string]string{"error": msg}, status)
+}
+
+//helper end
+
+// Handlers for the Todo API
 func listAllTodos(w http.ResponseWriter, r *http.Request) {
 	if data, err := db.RDB.Get(db.RCtx, cacheListKey).Bytes(); err == nil {
-		var todos []*Todo
+		var todos []*models.Todo
 		json.Unmarshal(data, &todos)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(todos)
+		jsonResponse(w, todos, http.StatusOK)
 		return
 	}
 
-	rows, err := db.DB.Query("SELECT id, title, status, deleted FROM todos WHERE deleted = false ORDER BY id")
+	todos, err := db.GetAllTodos(r.Context(), db.DB)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		errorResponse(w, "database error", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-
-	var todos []*Todo
-	for rows.Next() {
-		t := new(Todo)
-		if err := rows.Scan(&t.Id, &t.Title, &t.Status, &t.Deleted); err != nil {
-			http.Error(w, "Error scanning record", http.StatusInternalServerError)
-			return
-		}
-		todos = append(todos, t)
-	}
-
 	if len(todos) == 0 {
-		http.Error(w, "No todos to show yet!", http.StatusNotFound)
+		errorResponse(w, "no todos to be shown", http.StatusNotFound)
 		return
 	}
 
 	buf, _ := json.Marshal(todos)
 	db.RDB.Set(db.RCtx, cacheListKey, buf, 5*time.Minute)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(todos)
+	jsonResponse(w, todos, http.StatusOK)
 }
 
 func listTodo(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid todo ID", http.StatusBadRequest)
+		errorResponse(w, "invalid todo ID", http.StatusBadRequest)
 		return
 	}
 
 	itemKey := fmt.Sprintf(itemKeyFmt, id)
 	if data, err := db.RDB.Get(db.RCtx, itemKey).Bytes(); err == nil {
-		var t Todo
+		var t models.Todo
 		json.Unmarshal(data, &t)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(t)
+		jsonResponse(w, t, http.StatusOK)
 		return
 	}
 
-	var t Todo
-	t.Id = id
-	err = db.DB.QueryRow("SELECT title, status, deleted FROM todos WHERE id = $1 AND deleted = false", id).
-		Scan(&t.Title, &t.Status, &t.Deleted)
+	todo, err := db.GetTodoByID(r.Context(), db.DB, id)
 	if err != nil {
-		http.Error(w, "Item not found or deleted", http.StatusNotFound)
+		errorResponse(w, "todo not found or deleted", http.StatusNotFound)
 		return
 	}
 
-	buf, _ := json.Marshal(t)
+	buf, _ := json.Marshal(todo)
 	db.RDB.Set(db.RCtx, itemKey, buf, 5*time.Minute)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(t)
+	jsonResponse(w, todo, http.StatusOK)
 }
 
 func deleteTodo(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid todo ID", http.StatusBadRequest)
+		errorResponse(w, "invalid todo ID", http.StatusBadRequest)
 		return
 	}
 
-	// Soft delete by setting 'deleted' = true
-	res, err := db.DB.Exec("UPDATE todos SET deleted = true WHERE id = $1 and deleted = false", id)
+	success, err := db.DeleteTodo(r.Context(), db.DB, id)
 	if err != nil {
-		http.Error(w, "Unable to delete todo from database", http.StatusInternalServerError)
+		errorResponse(w, "unable to delete todo", http.StatusInternalServerError)
 		return
 	}
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
-		http.Error(w, "Todo not found", http.StatusNotFound)
+	if !success {
+		errorResponse(w, "todo not found", http.StatusNotFound)
 		return
 	}
-
-	// Invalidate cache
 	db.RDB.Del(db.RCtx, cacheListKey)
 	db.RDB.Del(db.RCtx, fmt.Sprintf(itemKeyFmt, id))
-
-	w.WriteHeader(http.StatusNoContent)
+	jsonResponse(w, map[string]string{"message": "todo deleted"}, http.StatusOK)
 }
 
 func updateTodo(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid todo ID", http.StatusBadRequest)
+		errorResponse(w, "invalid todo ID", http.StatusBadRequest)
 		return
 	}
 
-	var t Todo
+	var t models.Todo
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		errorResponse(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
+	t.Id = id
 
-	res, err := db.DB.Exec(
-		"UPDATE todos SET title = $1, status = $2, deleted = $3 WHERE id = $4 and deleted = false",
-		t.Title, t.Status, t.Deleted, id,
-	)
+	success, err := db.UpdateTodo(r.Context(), db.DB, &t)
 	if err != nil {
-		http.Error(w, "Update failed", http.StatusInternalServerError)
+		errorResponse(w, "update failed due to database error", http.StatusInternalServerError)
 		return
 	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
-		http.Error(w, "Todo not found", http.StatusNotFound)
+	if !success {
+		errorResponse(w, "todo not found in records", http.StatusNotFound)
 		return
 	}
-
 	db.RDB.Del(db.RCtx, cacheListKey)
 	db.RDB.Del(db.RCtx, fmt.Sprintf(itemKeyFmt, id))
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(t)
+	jsonResponse(w, t, http.StatusOK)
 }
 
 func createTodo(w http.ResponseWriter, r *http.Request) {
-	var t Todo
+	var t models.Todo
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		errorResponse(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
 
-	err := db.DB.QueryRow(`
-        INSERT INTO todos (title, status, deleted)
-        VALUES ($1, $2, $3)
-        RETURNING id
-    `, t.Title, t.Status, t.Deleted).Scan(&t.Id)
-	if err != nil {
-		http.Error(w, "Insert into dtabase failed failed", http.StatusInternalServerError)
+	if err := db.InsertTodo(r.Context(), db.DB, &t); err != nil {
+		errorResponse(w, "insert into database failed", http.StatusInternalServerError)
 		return
 	}
-
 	db.RDB.Del(db.RCtx, cacheListKey)
 	db.RDB.Del(db.RCtx, fmt.Sprintf(itemKeyFmt, t.Id))
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(t)
+	jsonResponse(w, t, http.StatusCreated)
 }
 
 func main() {
 	if err := db.Connect(); err != nil {
-		log.Fatal("Postgres connection failed:", err)
+		log.Fatal("postgres connection failed:", err)
 		return
 	}
 	defer db.DB.Close()
 
 	if !db.ConnectRedis() {
-		log.Fatal("Redis connection failed")
+		log.Fatal("redis connection failed")
 		return
 	}
 
