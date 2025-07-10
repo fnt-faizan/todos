@@ -52,7 +52,7 @@ func listAllTodos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(todos) == 0 {
-		http.Error(w, "No todos to show", http.StatusNotFound)
+		http.Error(w, "No todos to show yet!", http.StatusNotFound)
 		return
 	}
 
@@ -107,9 +107,9 @@ func deleteTodo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Soft delete by setting 'deleted' = true
-	res, err := db.DB.Exec("UPDATE todos SET deleted = true WHERE id = $1 where deleted = false", id)
+	res, err := db.DB.Exec("UPDATE todos SET deleted = true WHERE id = $1 and deleted = false", id)
 	if err != nil {
-		http.Error(w, "Unable to delete todo", http.StatusInternalServerError)
+		http.Error(w, "Unable to delete todo from database", http.StatusInternalServerError)
 		return
 	}
 	rows, _ := res.RowsAffected()
@@ -173,7 +173,7 @@ func createTodo(w http.ResponseWriter, r *http.Request) {
         RETURNING id
     `, t.Title, t.Status, t.Deleted).Scan(&t.Id)
 	if err != nil {
-		http.Error(w, "Insert failed", http.StatusInternalServerError)
+		http.Error(w, "Insert into dtabase failed failed", http.StatusInternalServerError)
 		return
 	}
 
