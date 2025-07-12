@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 	"todos/db"
+	"todos/migrations"
 	"todos/models"
 
 	"github.com/gorilla/mux"
@@ -174,6 +175,12 @@ func main() {
 		return
 	}
 	defer db.DB.Close()
+
+	// Run migrations
+	if err := migrations.RunMigrations(db.DB, "./migrations"); err != nil {
+		log.Fatal(err)
+		return
+	}
 
 	// Connect to Redis
 	if err := db.ConnectRedis(); err != nil {
