@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -33,7 +35,7 @@ func errorResponse(w http.ResponseWriter, msg string, status int) {
 
 // Handlers for the Todo API
 func listAllTodos(w http.ResponseWriter, r *http.Request) {
-	if data, err := db.RDB.Get(db.RCtx, cacheListKey).Bytes(); err == nil {
+	if data, err := db.RDB.Get(context.Background(), cacheListKey).Bytes(); err == nil {
 		var todos []*models.Todo
 		json.Unmarshal(data, &todos)
 		jsonResponse(w, todos, http.StatusOK)
@@ -51,7 +53,7 @@ func listAllTodos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buf, _ := json.Marshal(todos)
-	db.RDB.Set(db.RCtx, cacheListKey, buf, 5*time.Minute)
+	db.RDB.Set(context.Background(), cacheListKey, buf, 5*time.Minute)
 	jsonResponse(w, todos, http.StatusOK)
 }
 
@@ -64,7 +66,7 @@ func listTodo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemKey := fmt.Sprintf(itemKeyFmt, id)
-	if data, err := db.RDB.Get(db.RCtx, itemKey).Bytes(); err == nil {
+	if data, err := db.RDB.Get(context.Background(), itemKey).Bytes(); err == nil {
 		var t models.Todo
 		json.Unmarshal(data, &t)
 		jsonResponse(w, t, http.StatusOK)
@@ -78,7 +80,7 @@ func listTodo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buf, _ := json.Marshal(todo)
-	db.RDB.Set(db.RCtx, itemKey, buf, 5*time.Minute)
+	db.RDB.Set(context.Background(), itemKey, buf, 5*time.Minute)
 	jsonResponse(w, todo, http.StatusOK)
 }
 
@@ -99,8 +101,8 @@ func deleteTodo(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, "todo not found", http.StatusNotFound)
 		return
 	}
-	db.RDB.Del(db.RCtx, cacheListKey)
-	db.RDB.Del(db.RCtx, fmt.Sprintf(itemKeyFmt, id))
+	db.RDB.Del(context.Background(), cacheListKey)
+	db.RDB.Del(context.Background(), fmt.Sprintf(itemKeyFmt, id))
 	jsonResponse(w, map[string]string{"message": "todo deleted"}, http.StatusOK)
 }
 
@@ -128,8 +130,8 @@ func updateTodo(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, "todo not found in records", http.StatusNotFound)
 		return
 	}
-	db.RDB.Del(db.RCtx, cacheListKey)
-	db.RDB.Del(db.RCtx, fmt.Sprintf(itemKeyFmt, id))
+	db.RDB.Del(context.Background(), cacheListKey)
+	db.RDB.Del(context.Background(), fmt.Sprintf(itemKeyFmt, id))
 	jsonResponse(w, t, http.StatusOK)
 }
 
@@ -144,22 +146,41 @@ func createTodo(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, "insert into database failed", http.StatusInternalServerError)
 		return
 	}
-	db.RDB.Del(db.RCtx, cacheListKey)
-	db.RDB.Del(db.RCtx, fmt.Sprintf(itemKeyFmt, t.Id))
+	db.RDB.Del(context.Background(), cacheListKey)
+	db.RDB.Del(context.Background(), fmt.Sprintf(itemKeyFmt, t.Id))
 	jsonResponse(w, t, http.StatusCreated)
 }
 
+// Function to check if PostgreSQL is ready
+func waitForPostgres(ctx context.Context, db *sql.DB) error {
+	for {
+		if err := db.Ping(); err == nil {
+			return nil
+		}
+		fmt.Println("Waiting for PostgreSQL to be ready...")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(1 * time.Second):
+			continue
+		}
+	}
+}
+
 func main() {
-	if err := db.Connect(); err != nil {
-		log.Fatal("postgres connection failed:", err)
+	// Connect to PostgreSQL
+	if err := db.ConnectPostgres(); err != nil {
+		log.Fatal(err)
 		return
 	}
 	defer db.DB.Close()
 
-	if !db.ConnectRedis() {
-		log.Fatal("redis connection failed")
+	// Connect to Redis
+	if err := db.ConnectRedis(); err != nil {
+		log.Fatal(err)
 		return
 	}
+	defer db.RDB.Close()
 
 	r := mux.NewRouter()
 	r.HandleFunc("/todos", listAllTodos).Methods("GET")
