@@ -14,11 +14,14 @@ var RDB *redis.Client
 // ConnectRedis connects to Redis with a 30-second timeout
 func ConnectRedis() error {
 	// Get Redis connection parameters from environment variables with defaults
-	host := getEnv("REDIS_HOST", "localhost")
+	host := getEnv("REDIS_HOST", "redis")
 	port := getEnv("REDIS_PORT", "6379")
 	password := getEnv("REDIS_PASSWORD", "")
 
 	addr := fmt.Sprintf("%s:%s", host, port)
+
+	// Log connection details
+	fmt.Printf("Connecting to Redis at %s:%s\n", host, port)
 
 	// Create Redis client with timeout settings
 	RDB = redis.NewClient(&redis.Options{

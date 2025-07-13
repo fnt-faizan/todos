@@ -2,15 +2,14 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
+
 	"todos/db"
-	"todos/migrations"
 	"todos/models"
 
 	"github.com/gorilla/mux"
@@ -152,50 +151,30 @@ func createTodo(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, t, http.StatusCreated)
 }
 
-// Function to check if PostgreSQL is ready
-func waitForPostgres(ctx context.Context, db *sql.DB) error {
-	for {
-		if err := db.Ping(); err == nil {
-			return nil
-		}
-		fmt.Println("Waiting for PostgreSQL to be ready...")
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(1 * time.Second):
-			continue
-		}
-	}
-}
-
 func main() {
 	// Connect to PostgreSQL
+	log.Println("Connecting to PostgreSQL...")
 	if err := db.ConnectPostgres(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
 		return
 	}
 	defer db.DB.Close()
 
-	// Run migrations
-	if err := migrations.RunMigrations(db.DB, "./migrations"); err != nil {
-		log.Fatal(err)
-		return
-	}
-
 	// Connect to Redis
+	log.Println("Connecting to Redis...")
 	if err := db.ConnectRedis(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to connect to Redis: %v", err)
 		return
 	}
 	defer db.RDB.Close()
 
+	// Create router
 	r := mux.NewRouter()
 	r.HandleFunc("/todos", listAllTodos).Methods("GET")
 	r.HandleFunc("/todos", createTodo).Methods("POST")
 	r.HandleFunc("/todos/{id}", listTodo).Methods("GET")
 	r.HandleFunc("/todos/{id}", updateTodo).Methods("PUT")
 	r.HandleFunc("/todos/{id}", deleteTodo).Methods("DELETE")
-
 	fmt.Println("Server started on port 8080")
 	http.ListenAndServe(":8080", r)
 }
